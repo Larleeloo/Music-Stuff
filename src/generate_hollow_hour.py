@@ -40,128 +40,11 @@ import argparse
 import math
 import os
 import random
-import struct
+import sys
 
-# --------------------------------------------------------------------------
-# timing
-# --------------------------------------------------------------------------
-
-PPQ = 480
-BEAT = PPQ
-BAR = 4 * BEAT
-
-
-def T(bar, beat=1.0):
-    """Absolute tick of a musical position (1-indexed bars and beats)."""
-    return int(round((bar - 1) * BAR + (beat - 1.0) * BEAT))
-
-
-def B(beats):
-    """Beats -> ticks."""
-    return int(round(beats * BEAT))
-
-
-# Event ordering inside a single tick.  Note-offs must precede note-ons so a
-# repeated pitch retriggers, and a pitch-bend reset must land between them.
-P_META, P_SETUP, P_OFF, P_CTRL, P_ON = 0, 1, 2, 3, 4
-
-
-def vlq(n):
-    """Variable-length quantity used for delta times and meta lengths."""
-    if n < 0:
-        n = 0
-    out = [n & 0x7F]
-    n >>= 7
-    while n:
-        out.append((n & 0x7F) | 0x80)
-        n >>= 7
-    return bytes(reversed(out))
-
-
-class Track:
-    """One MTrk chunk.  Events are collected unordered and sorted on write."""
-
-    def __init__(self, name, channel=None, instrument=None):
-        self.name = name
-        self.channel = channel
-        self.instrument = instrument
-        self._ev = []
-        self._seq = 0
-
-    # -- low level ---------------------------------------------------------
-    def add(self, tick, prio, data):
-        self._ev.append((max(0, int(round(tick))), prio, self._seq, bytes(data)))
-        self._seq += 1
-
-    def meta(self, tick, mtype, payload):
-        self.add(tick, P_META, bytes([0xFF, mtype]) + vlq(len(payload)) + payload)
-
-    def text(self, tick, mtype, s):
-        self.meta(tick, mtype, s.encode("utf-8"))
-
-    # -- channel messages --------------------------------------------------
-    def program(self, tick, prog):
-        self.add(tick, P_SETUP, [0xC0 | self.channel, prog & 0x7F])
-
-    def cc(self, tick, num, val, prio=P_CTRL):
-        v = max(0, min(127, int(round(val))))
-        self.add(tick, prio, [0xB0 | self.channel, num & 0x7F, v])
-
-    def bend(self, tick, semitones, rng=12.0):
-        v = 8192 + int(round(semitones / rng * 8192.0))
-        v = max(0, min(16383, v))
-        self.add(tick, P_CTRL, [0xE0 | self.channel, v & 0x7F, (v >> 7) & 0x7F])
-        return v
-
-    def note(self, tick, dur, pitch, vel):
-        pitch = max(0, min(127, int(round(pitch))))
-        vel = max(1, min(127, int(round(vel))))
-        t0 = max(0, int(round(tick)))
-        t1 = max(t0 + 1, int(round(tick + dur)))
-        self.add(t0, P_ON, [0x90 | self.channel, pitch, vel])
-        self.add(t1, P_OFF, [0x80 | self.channel, pitch, 64])
-
-    # -- setup helper ------------------------------------------------------
-    def voice(self, prog, volume, pan, reverb=110, chorus=32):
-        self.text(0, 0x03, self.name)
-        if self.instrument:
-            self.text(0, 0x04, self.instrument)
-        self.program(0, prog)
-        self.cc(0, 7, volume, prio=P_SETUP)    # channel volume
-        self.cc(0, 10, pan, prio=P_SETUP)      # pan
-        self.cc(0, 91, reverb, prio=P_SETUP)   # reverb send
-        self.cc(0, 93, chorus, prio=P_SETUP)   # chorus send
-        self.cc(0, 11, 100, prio=P_SETUP)      # expression starts open
-
-    def bend_range(self, semitones=12):
-        """RPN 0: widen pitch bend so the theremin can glide a full octave."""
-        self.cc(0, 101, 0, prio=P_SETUP)
-        self.cc(0, 100, 0, prio=P_SETUP)
-        self.cc(0, 6, semitones, prio=P_SETUP)
-        self.cc(0, 38, 0, prio=P_SETUP)
-        self.cc(0, 101, 127, prio=P_SETUP)
-        self.cc(0, 100, 127, prio=P_SETUP)
-
-    # -- output ------------------------------------------------------------
-    def serialize(self):
-        evs = sorted(self._ev, key=lambda e: (e[0], e[1], e[2]))
-        buf = bytearray()
-        last = 0
-        for tick, _p, _s, data in evs:
-            buf += vlq(tick - last)
-            buf += data
-            last = tick
-        buf += vlq(0) + bytes([0xFF, 0x2F, 0x00])
-        return b"MTrk" + struct.pack(">I", len(buf)) + bytes(buf)
-
-
-def write_smf(path, tracks):
-    head = b"MThd" + struct.pack(">IHHH", 6, 1, len(tracks), PPQ)
-    with open(path, "wb") as fh:
-        fh.write(head)
-        for tr in tracks:
-            fh.write(tr.serialize())
-
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from smf import (BAR, BEAT, B, PPQ, P_CTRL, P_SETUP, T, Track,  # noqa: E402
+                 make_tick_to_sec, tempo_meta, write_smf)
 
 # --------------------------------------------------------------------------
 # tempo
@@ -196,25 +79,6 @@ def build_tempo_map():
     tm.append((T(65), 26.0))       # final chord hangs
     tm.sort(key=lambda x: x[0])
     return tm
-
-
-def make_tick_to_sec(tempo_map):
-    pts = list(tempo_map)
-    cum = [0.0]
-    for i in range(1, len(pts)):
-        dt = pts[i][0] - pts[i - 1][0]
-        cum.append(cum[-1] + dt / float(PPQ) * (60.0 / pts[i - 1][1]))
-
-    def f(tick):
-        lo = 0
-        for i, (tk, _bpm) in enumerate(pts):
-            if tk <= tick:
-                lo = i
-            else:
-                break
-        return cum[lo] + (tick - pts[lo][0]) / float(PPQ) * (60.0 / pts[lo][1])
-
-    return f
 
 
 # --------------------------------------------------------------------------
@@ -397,7 +261,7 @@ def render_theremin(tr, notes, t2s, expressive=True):
             semis = max(-BEND_RANGE + 0.1, min(BEND_RANGE - 0.1, semis))
             v = tr.bend(tick, semis, BEND_RANGE)
             if v == last:
-                tr._ev.pop()                    # drop redundant frames
+                tr.pop_last()                   # drop redundant frames
             else:
                 last = v
             tick += BEND_STEP
@@ -644,8 +508,7 @@ def build_conductor(tempo_map):
     tr.meta(0, 0x58, bytes([4, 2, 24, 8]))              # 4/4
     tr.meta(0, 0x59, bytes([256 - 1, 1]))               # sf=-1 (1 flat), minor
     for tick, bpm in tempo_map:
-        us = int(round(60000000.0 / bpm))
-        tr.meta(tick, 0x51, bytes([(us >> 16) & 0xFF, (us >> 8) & 0xFF, us & 0xFF]))
+        tempo_meta(tr, tick, bpm)
     for bar, name in ((1, "I. Winding"), (9, "II. The Lament"),
                       (25, "III. The Hollow"), (33, "IV. Apex"),
                       (49, "V. Collapse"), (57, "VI. Music Box Alone")):
@@ -736,12 +599,12 @@ def main():
     tracks, tempo_map, t2s = build(expressive=not args.clean)
     write_smf(out, tracks)
 
-    notes = sum(1 for tr in tracks for e in tr._ev if e[3][0] & 0xF0 == 0x90)
-    end = max((e[0] for tr in tracks for e in tr._ev), default=0)
+    end = max(tr.end_tick() for tr in tracks)
     secs = t2s(end)
     print("wrote %s" % out)
     print("  tracks %d   notes %d   events %d   %.1f KB"
-          % (len(tracks), notes, sum(len(tr._ev) for tr in tracks),
+          % (len(tracks), sum(tr.note_count() for tr in tracks),
+             sum(tr.event_count() for tr in tracks),
              os.path.getsize(out) / 1024.0))
     print("  length %d bars, %d:%02d" % (end // BAR + 1, int(secs) // 60,
                                          int(secs) % 60))

@@ -21,10 +21,11 @@ so the glides, hand vibrato and volume swells are written into the MIDI itself.
 
 ### Static Bloom — sad glitch-pop · F minor · ~4:05
 
-A grand piano ballad with the electronics arranged around it rather than on top
-of it: 808 sub with glides, Rhodes, gated vox pad, glockenspiel ratchets and a
-square-wave counter-melody. Stutters, beat repeats, pitch glitches and two tape
-stops — one of which drags the tempo map down with it.
+A grand piano ballad with everything else arranged around it rather than on top
+of it: a whirring ethereal bass drone, a string orchestra that enters section by
+section, Rhodes, gated vox pad, glockenspiel ratchets and a square-wave
+counter-melody. Stutters, beat repeats, pitch glitches and two tape stops — one
+of which drags the tempo map down with it.
 
 `midi/static_bloom.mid` · [setup guide](docs/STATIC_BLOOM.md)
 

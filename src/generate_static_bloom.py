@@ -19,9 +19,16 @@ into the note data itself, so it survives the export:
                  real tempo ritardando so the whole grid drags to a halt
   * beat repeat  one 16th slice of a bar re-fired across the last beat
   * pitch glitch stair-stepped bend jumps, like a sampler losing its place
-  * 808 glides   pitch bend sliding into each new bass root
+  * portamento   pitch bend sliding the bass drone into each new root
   * sidechain    CC11 ducking curves keyed to the kick, so the electronics
                  breathe against the piano
+
+The bass is a sustained whirring drone rather than a plucked sub.  Its notes
+tie across bar lines and overlap into each other so there is never a gap to
+re-attack into, its attack is shaped by CC11 instead of by the note-on, and
+two slightly detuned pitch LFOs beat against each other to give it the whir.
+A string orchestra - violins, cello, tremolo - enters section by section, so
+the arrangement grows underneath the piano without ever crowding it.
 
 Form (76 bars, 4/4, 76 BPM with a tape stop at 48 and a ritardando at the end):
 
@@ -61,32 +68,40 @@ THIRTYSECOND = BEAT // 8
 # --------------------------------------------------------------------------
 # Each entry carries a ready-made voicing per instrument so the arrangement
 # code never has to think about spelling chords.
-#   sub    808 root          lh/rh  grand piano left and right hand
+#   root   bass root         lh/rh  grand piano left and right hand
 #   rhodes electric piano    pad    wordless voice pad
 #   bells  ascending pool for arpeggios and ratchets
+#   strings violin-section voicing  trem  tremolo pair   horn  horn pair
 
 CHORDS = {
-    "Fm9":     dict(sub=29, lh=[41, 48], rh=[56, 60, 63, 67],
+    "Fm9":     dict(root=29, lh=[41, 48], rh=[56, 60, 63, 67],
                     rhodes=[56, 60, 63, 67], pad=[63, 68, 72],
-                    bells=[72, 75, 79, 80, 84, 87]),
-    "Dbmaj7":  dict(sub=25, lh=[37, 44], rh=[53, 56, 60, 65],
+                    bells=[72, 75, 79, 80, 84, 87],
+                    strings=[72, 75, 79, 84], trem=[63, 72], horn=[56, 60]),
+    "Dbmaj7":  dict(root=25, lh=[37, 44], rh=[53, 56, 60, 65],
                     rhodes=[53, 56, 60, 65], pad=[60, 65, 72],
-                    bells=[68, 72, 77, 80, 84, 89]),
-    "Abadd9":  dict(sub=32, lh=[44, 51], rh=[58, 60, 63, 68],
+                    bells=[68, 72, 77, 80, 84, 89],
+                    strings=[72, 77, 80, 84], trem=[65, 72], horn=[56, 60]),
+    "Abadd9":  dict(root=32, lh=[44, 51], rh=[58, 60, 63, 68],
                     rhodes=[58, 63, 68, 72], pad=[63, 68, 75],
-                    bells=[68, 70, 75, 79, 82, 87]),
-    "Ebadd9":  dict(sub=27, lh=[39, 46], rh=[55, 58, 63, 65],
+                    bells=[68, 70, 75, 80, 82, 87],
+                    strings=[75, 80, 82, 87], trem=[63, 75], horn=[56, 63]),
+    "Ebadd9":  dict(root=27, lh=[39, 46], rh=[55, 58, 63, 65],
                     rhodes=[55, 58, 65, 70], pad=[65, 70, 75],
-                    bells=[70, 75, 77, 82, 87, 89]),
-    "Bbm7":    dict(sub=34, lh=[46, 53], rh=[56, 61, 65, 68],
+                    bells=[70, 75, 77, 82, 87, 89],
+                    strings=[70, 75, 79, 82], trem=[63, 70], horn=[58, 63]),
+    "Bbm7":    dict(root=34, lh=[46, 53], rh=[56, 61, 65, 68],
                     rhodes=[56, 61, 65, 70], pad=[61, 65, 70],
-                    bells=[73, 77, 80, 82, 85, 89]),
-    "Cm7":     dict(sub=36, lh=[48, 55], rh=[58, 63, 67, 70],
+                    bells=[73, 77, 80, 82, 85, 89],
+                    strings=[73, 77, 80, 85], trem=[65, 73], horn=[56, 61]),
+    "Cm7":     dict(root=36, lh=[48, 55], rh=[58, 63, 67, 70],
                     rhodes=[58, 63, 67, 72], pad=[63, 67, 70],
-                    bells=[72, 75, 79, 82, 84, 87]),
-    "Gbmaj7":  dict(sub=30, lh=[42, 49], rh=[58, 61, 65, 70],
+                    bells=[72, 75, 79, 82, 84, 87],
+                    strings=[72, 75, 79, 82], trem=[63, 72], horn=[58, 63]),
+    "Gbmaj7":  dict(root=30, lh=[42, 49], rh=[58, 61, 65, 70],
                     rhodes=[58, 61, 65, 70], pad=[61, 65, 70],
-                    bells=[70, 73, 77, 82, 85, 89]),
+                    bells=[70, 73, 77, 82, 85, 89],
+                    strings=[73, 77, 82, 85], trem=[65, 73], horn=[58, 61]),
 }
 
 VERSE = ["Fm9", "Dbmaj7", "Abadd9", "Ebadd9"]        # i  - VI  - III - VII
@@ -402,38 +417,237 @@ def build_glitch_piano(tr, rnd, grnd, expressive=True):
 # electronics
 # --------------------------------------------------------------------------
 
-SUB_BARS = list(range(9, 49)) + list(range(49, 69)) + [69, 70, 71, 72]
+BASS_BARS = list(range(9, 73))
+
+# Two detuned LFOs rather than one: their beating against each other is what
+# reads as "whirring" instead of as plain vibrato.  Depths are in semitones,
+# so ~0.10 is about ten cents - felt, not heard as pitch movement.
+WHIRR = ((0.73, 0.10), (1.09, 0.06))
+
+# The tape stops own the pitch bend on every channel they touch.  Any other
+# continuous bend stream has to stand off inside these windows, or the two
+# fight over the same controller and cancel each other out.
+TAPE_STOPS = ((T(48, 4.0), T(49) - 8), (T(76, 2.0), T(77) - 8))
 
 
-def build_sub(tr, rnd, expressive=True):
-    """808-style sub: one long root per bar, gliding into each new pitch."""
-    prev = None
-    for bar in sorted(set(SUB_BARS)):
-        p = ch(bar)["sub"]
-        sec = section_of(bar)
-        vel = {"verse": 96, "chorus": 108, "bridge": 88, "outro": 74}.get(sec, 90)
-        ghost = None
-        if sec == "chorus" and bar % 2 == 0:
-            ghost = 3.75
-        elif sec == "verse" and bar % 4 == 3:
-            ghost = 4.5
-        dur = B(3.7) if sec != "bridge" else B(3.2)
-        if ghost is not None:
-            # stop the root before its own ghost, or the ghost gets cut short
-            dur = min(dur, B(ghost - 1.0 - 0.15))
-        tr.note(T(bar), dur, p, vel + rnd.randint(-4, 4))
-        if expressive and prev is not None and prev != p:
-            # slide into the new root from the old one
-            delta = max(-11.5, min(11.5, prev - p))
-            for k in range(13):
-                u = k / 12.0
-                tr.bend(T(bar) + u * B(0.28), delta * (1.0 - u) ** 1.8)
-            tr.bend(T(bar) + B(0.30), 0.0)
-        prev = p
-        # syncopated ghost hit, trap-style
-        if ghost is not None:
-            tr.note(T(bar, ghost), B(0.7 if ghost < 4.0 else 0.4), p,
-                    vel - (26 if ghost < 4.0 else 34))
+def in_tape_stop(tick):
+    return any(a - 8 <= tick <= b + 8 for a, b in TAPE_STOPS)
+
+
+def bass_runs():
+    """Merge neighbouring bars that share a root, so the drone ties over the
+    bar line instead of being re-struck four times a bar."""
+    runs = []
+    for bar in BASS_BARS:
+        p = ch(bar)["root"]
+        if runs and runs[-1][1] == bar - 1 and runs[-1][2] == p:
+            runs[-1][1] = bar
+        else:
+            runs.append([bar, bar, p])
+    return runs
+
+
+def build_bass(tr, rnd, t2s, expressive=True):
+    """A whirring, ethereal drone - the opposite of a plucked 808.
+
+    Three things keep it from reading as plucked: the notes are tied across
+    bar lines and overlap into each other so there is no gap to re-attack
+    into, the attack is shaped by a CC11 swell rather than by the note-on,
+    and there are no syncopated stabs anywhere.  On top of that sits a slow
+    two-LFO pitch whirr and a filter that drifts.
+    """
+    runs = bass_runs()
+    for i, (first, last, p) in enumerate(runs):
+        sec = section_of(first)
+        vel = {"verse": 84, "chorus": 96, "bridge": 74, "outro": 66}.get(sec, 84)
+        start = T(first)
+        # overlap into the next root so the drone never actually stops
+        end = T(last + 1) + (B(0.6) if i + 1 < len(runs) else B(2.0))
+        dur = end - start
+        # Root and octave only.  A fifth on top would be prettier, but the
+        # runs deliberately overlap, and Cm7's octave (C3) is exactly Fm9's
+        # fifth-above-the-octave - the two would collide and cut each other.
+        tr.note(start, dur, p, vel - 18 + rnd.randint(-3, 3))      # weight
+        tr.note(start + 7, dur, p + 12, vel + rnd.randint(-3, 3))  # the voice
+
+    if not expressive:
+        return
+
+    # One bend stream for the whole channel: the whirr runs continuously and
+    # the portamento slides are added on top of it where roots change.
+    span_start, span_end = T(BASS_BARS[0]), T(BASS_BARS[-1] + 1) + B(2.0)
+    # Slide by the shortest path, not the literal interval.  D♭1 up to C2 is
+    # written as eleven semitones but a bass portamento takes the semitone
+    # down from D♭2 instead; an eleven-semitone swoop would sound like a
+    # mistake rather than a slide.
+    slides = [(T(first), ((runs[i - 1][2] - p) + 6) % 12 - 6)
+              for i, (first, _last, p) in enumerate(runs) if i]
+    glide = B(0.55)
+    last_val = None
+    tick = span_start
+    while tick <= span_end:
+        if in_tape_stop(tick):
+            tick += 30
+            last_val = None
+            continue
+        secs = t2s(tick)
+        semis = sum(d * math.sin(2 * math.pi * r * secs) for r, d in WHIRR)
+        for s_tick, delta in slides:
+            if s_tick <= tick < s_tick + glide:
+                u = (tick - s_tick) / float(glide)
+                semis += delta * (1.0 - u) ** 1.9
+        v = tr.bend(tick, semis)
+        if v == last_val:
+            tr.pop_last()
+        else:
+            last_val = v
+        tick += 30
+
+    # CC11: swell in, breathe, and never snap on
+    tick = span_start
+    while tick <= span_end:
+        u = min(1.0, (tick - span_start) / float(B(2.0)))
+        breath = 6.0 * math.sin(2 * math.pi * 0.11 * t2s(tick))
+        tr.cc(tick, 11, 30 + 66 * (u ** 0.7) + breath)
+        tick += 48
+
+    # CC74: the filter drifts, which is most of the "ethereal"
+    tick = span_start
+    while tick <= span_end:
+        s = t2s(tick)
+        tr.cc(tick, 74, 62 + 30 * math.sin(2 * math.pi * 0.037 * s)
+              + 10 * math.sin(2 * math.pi * 0.091 * s))
+        tick += 120
+
+
+# --------------------------------------------------------------------------
+# string orchestra
+# --------------------------------------------------------------------------
+# The sections enter one at a time so the arrangement grows: violins from the
+# first chorus, cello from the second verse, tremolo only where there is
+# tension to hold.  Each part is voiced in its own register to stay clear of
+# the piano, which keeps the top line.
+
+def build_violins(tr, rnd, expressive=True):
+    """Sustained section chords, tied across bars where the voicing holds."""
+    plan = [(range(25, 41), 46), (range(57, 69), 64), (range(69, 73), 44)]
+    for bars, vel in plan:
+        bars = list(bars)
+        i = 0
+        while i < len(bars):
+            voicing = ch(bars[i])["strings"]
+            j = i
+            while (j + 1 < len(bars)
+                   and ch(bars[j + 1])["strings"] == voicing):
+                j += 1
+            start = T(bars[i])
+            dur = T(bars[j] + 1) - start - B(0.15)
+            for k, p in enumerate(voicing):
+                # a section does not attack as one player; stagger the entries
+                tr.note(start + k * 22 + rnd.randint(-8, 8), dur, p,
+                        vel - 4 * k + rnd.randint(-4, 4))
+            i = j + 1
+
+    # the last swell, held over the final cadence
+    for k, p in enumerate(ch(73)["strings"]):
+        tr.note(T(73) + k * 26, B(11.0), p, 40 - 3 * k)
+
+    if expressive:
+        # strings swell rather than start; CC11 does the bowing
+        for first, last, peak in ((25, 40, 96), (57, 68, 116), (69, 76, 86)):
+            tick = T(first)
+            end = T(last + 1)
+            while tick <= end:
+                u = (tick - T(first)) / float(end - T(first))
+                shape = math.sin(math.pi * min(1.0, u) ** 0.8)
+                tr.cc(tick, 11, 26 + (peak - 26) * (0.35 + 0.65 * shape))
+                tick += 60
+
+
+CELLO_VERSE = [   # over Fm9 | Dbmaj7 | Abadd9 | Ebadd9
+    (0, 3.0, 2.0, 48), (1, 1.0, 4.0, 49), (2, 1.0, 4.0, 51),
+    (3, 1.0, 2.0, 55), (3, 3.0, 2.0, 53),
+]
+
+CELLO_CHORUS = [  # over Dbmaj7 | Ebadd9 | Cm7 | Fm9, twice
+    (0, 1.0, 3.0, 61), (0, 4.0, 1.0, 60),
+    (1, 1.0, 2.0, 58), (1, 3.0, 2.0, 55),
+    (2, 1.0, 2.5, 60), (2, 3.5, 1.5, 58),
+    (3, 1.0, 2.0, 56), (3, 3.0, 2.0, 53),
+    (4, 1.0, 2.0, 53), (4, 3.0, 2.0, 56),
+    (5, 1.0, 4.0, 58),
+    (6, 1.0, 2.0, 63), (6, 3.0, 2.0, 60),
+    (7, 1.0, 3.0, 56), (7, 4.0, 1.0, 53),
+]
+
+
+def build_cello(tr, rnd):
+    """A counterline that moves where the piano holds, and holds where it moves."""
+    for first, phrase, vel in ((49, CELLO_VERSE, 58), (53, CELLO_VERSE, 54),
+                               (57, CELLO_CHORUS, 72), (69, CELLO_VERSE, 50)):
+        for off, beat, dur, pitch in phrase:
+            tr.note(T(first + off, beat) + rnd.randint(-12, 12),
+                    B(dur) - 30, pitch, vel + rnd.randint(-6, 6))
+    for k, p in enumerate((41, 53)):                 # final low F, two octaves
+        tr.note(T(73) + k * 30, B(11.0), p, 46 - 6 * k)
+
+
+def build_tremolo(tr, rnd, expressive=True):
+    """Only where there is dread to hold: the breakdown and the last chorus."""
+    for first, last, vel in ((41, 48, 40), (61, 68, 56)):
+        for bar in range(first, last + 1):
+            grow = (bar - first) / float(max(1, last - first))
+            for k, p in enumerate(ch(bar)["trem"]):
+                tr.note(T(bar) + k * 18 + rnd.randint(-10, 10), B(3.85),
+                        p, vel + 18 * grow - 5 * k + rnd.randint(-4, 4))
+    if expressive:
+        for first, last in ((41, 48), (61, 68)):
+            tick, end = T(first), T(last + 1)
+            while tick <= end:
+                u = (tick - T(first)) / float(end - T(first))
+                tr.cc(tick, 11, 20 + 90 * (u ** 1.4))
+                tick += 60
+
+
+def build_celesta(tr, rnd):
+    """High sparkle: a few answers in the intro, the chorus peaks doubled an
+    octave up, and a last descent as the piece winds down."""
+    for bar, beat, pitch in ((2, 4.0, 84), (4, 3.5, 80), (6, 4.5, 87),
+                             (8, 3.0, 84)):
+        tr.note(T(bar, beat) + rnd.randint(-8, 8), B(1.5), pitch, 44)
+
+    # double the top of each chorus phrase an octave above the piano
+    for first in (25, 33, 57, 65):
+        for off, beat, dur, pitch, vel in PHRASE_CHORUS:
+            if pitch < 84 or off > 7:
+                continue
+            tr.note(T(first + off, beat) + rnd.randint(-6, 6), B(min(dur, 2.0)),
+                    pitch + 12, 46 + rnd.randint(-5, 5))
+
+    for i, pitch in enumerate((87, 84, 80, 75, 72)):
+        tr.note(T(74, 1.0) + i * B(0.75) + rnd.randint(-8, 8),
+                B(1.2), pitch, 44 - i * 4)
+
+
+def build_horn(tr, rnd, expressive=True):
+    """Warmth arriving late - the horns only show up for the last lift."""
+    for first, last, vel in ((61, 68, 54), (69, 72, 44)):
+        bar = first
+        while bar <= last:
+            voicing = ch(bar)["horn"]
+            span = 2 if bar + 1 <= last and ch(bar + 1)["horn"] == voicing else 1
+            for k, p in enumerate(voicing):
+                tr.note(T(bar) + k * 30 + rnd.randint(-10, 10),
+                        B(4.0 * span) - B(0.3), p, vel - 6 * k + rnd.randint(-4, 4))
+            bar += span
+    for k, p in enumerate(ch(73)["horn"]):
+        tr.note(T(73) + k * 34, B(10.0), p, 40 - 5 * k)
+    if expressive:
+        tick, end = T(61), T(77)
+        while tick <= end:
+            u = (tick - T(61)) / float(end - T(61))
+            tr.cc(tick, 11, 24 + 74 * math.sin(math.pi * min(1.0, u) ** 0.7))
+            tick += 96
 
 
 def build_rhodes(tr, rnd):
@@ -681,39 +895,54 @@ def build(expressive=True, seed=71624):
     piano = Track("Grand Piano", 0, "Acoustic Grand Piano")
     gpiano = Track("Glitch Piano", 1, "Honky-tonk Piano (chopped)")
     rhodes = Track("Rhodes Bed", 2, "Electric Piano 1")
-    sub = Track("Sub 808", 3, "Synth Bass 1")
+    bass = Track("Whirring Bass", 3, "Pad 8 (sweep)")
     bells = Track("Glass Bells", 4, "Glockenspiel")
     pad = Track("Vox Pad", 5, "Voice Oohs")
     tex = Track("Granular Texture", 6, "FX 1 (rain)")
     rev = Track("Reverse FX", 7, "Reverse Cymbal")
     blip = Track("Blip Lead", 8, "Lead 1 (square)")
     drums = Track("Glitch Drums", 9, "Standard Kit")
+    violins = Track("Violins", 10, "String Ensemble 1")
+    cello = Track("Cello", 11, "Cello")
+    tremolo = Track("Tremolo Strings", 12, "Tremolo Strings")
+    celesta = Track("Celesta", 13, "Celesta")
+    horn = Track("French Horn", 14, "French Horn")
 
     piano.voice(0, 108, 64, reverb=64, chorus=8)
     gpiano.voice(3, 74, 46, reverb=98, chorus=44)
-    rhodes.voice(4, 82, 80, reverb=92, chorus=40)
-    sub.voice(38, 110, 64, reverb=24, chorus=0)
+    rhodes.voice(4, 76, 80, reverb=92, chorus=40)
+    bass.voice(95, 104, 64, reverb=52, chorus=72)
     bells.voice(9, 72, 92, reverb=104, chorus=24)
-    pad.voice(54, 70, 64, reverb=118, chorus=52)
-    tex.voice(96, 48, 64, reverb=127, chorus=64)
+    pad.voice(54, 64, 64, reverb=118, chorus=52)
+    tex.voice(96, 44, 64, reverb=127, chorus=64)
     rev.voice(119, 76, 64, reverb=127, chorus=32)
     blip.voice(80, 68, 36, reverb=72, chorus=20)
     drums.voice(0, 100, 64, reverb=40, chorus=0)
+    violins.voice(48, 88, 50, reverb=112, chorus=36)
+    cello.voice(42, 86, 78, reverb=100, chorus=28)
+    tremolo.voice(44, 70, 58, reverb=118, chorus=32)
+    celesta.voice(8, 68, 96, reverb=112, chorus=20)
+    horn.voice(60, 78, 70, reverb=108, chorus=24)
 
     if expressive:
-        for tr in (piano, gpiano, sub, bells, blip):
+        for tr in (piano, gpiano, bass, bells, blip):
             tr.bend_range(12)
 
     build_piano(piano, rnd, expressive)
     build_glitch_piano(gpiano, rnd, grnd, expressive)
     build_rhodes(rhodes, rnd)
-    build_sub(sub, rnd, expressive)
+    build_bass(bass, rnd, t2s, expressive)
     build_bells(bells, rnd, grnd, expressive)
     build_pad(pad, rnd)
     build_texture(tex, rnd)
     build_reverse(rev)
     build_blip(blip, rnd, grnd, expressive)
     kicks = build_drums(drums, rnd, expressive)
+    build_violins(violins, rnd, expressive)
+    build_cello(cello, rnd)
+    build_tremolo(tremolo, rnd, expressive)
+    build_celesta(celesta, rnd)
+    build_horn(horn, rnd, expressive)
 
     if expressive:
         # electronics pump against the kick; the piano never does
@@ -726,14 +955,16 @@ def build(expressive=True, seed=71624):
             sweep(tr, T(40), T(41), 112, 24)
             sweep(tr, T(55), T(57), 34, 118)
             sweep(tr, T(68), T(69), 118, 20)
-        # the tape stop at bar 48, and the one that ends the record
-        for tr in (piano, gpiano, bells, blip, sub):
-            tape_stop(tr, T(48, 4.0), T(49) - 8)
+        # the tape stop at bar 48, and the one that ends the record.  The
+        # strings ride through both - an orchestra does not tape-stop.
+        for tr in (piano, gpiano, bells, blip, bass):
+            tape_stop(tr, *TAPE_STOPS[0])
         for tr in (piano, gpiano):
-            tape_stop(tr, T(76, 2.0), T(77) - 8, depth=-9.0, curve=2.8)
+            tape_stop(tr, TAPE_STOPS[1][0], TAPE_STOPS[1][1],
+                      depth=-9.0, curve=2.8)
 
-    tracks = [conductor, piano, gpiano, rhodes, sub, bells, pad, tex, rev,
-              blip, drums]
+    tracks = [conductor, piano, gpiano, rhodes, bass, bells, pad, tex, rev,
+              blip, drums, violins, cello, tremolo, celesta, horn]
     return tracks, tempo_map, t2s
 
 

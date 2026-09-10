@@ -45,6 +45,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from smf import (BAR, BEAT, B, PPQ, P_CTRL, P_SETUP, T, Track,  # noqa: E402
                  make_tick_to_sec, tempo_meta, write_smf)
+import expressive  # noqa: E402
 
 # --------------------------------------------------------------------------
 # tempo
@@ -205,98 +206,13 @@ BEND_STEP = 12          # ticks between pitch-bend frames
 EXPR_STEP = 24          # ticks between CC11 frames
 
 
-def render_theremin(tr, notes, t2s, expressive=True):
-    """Notes plus the glide / vibrato / swell data that sells the theremin."""
-    notes = sorted(notes, key=lambda n: n["t"])
-    n = len(notes)
+THEREMIN_VOICE = expressive.Voice(vib_rate=VIB_RATE, bend_range=BEND_RANGE,
+                                  bend_step=BEND_STEP, expr_step=EXPR_STEP)
 
-    # Legato pairs are butt-joined exactly so the bend reset can slot between
-    # the note-off and the next note-on without an audible blip.
-    for i in range(n - 1):
-        gap = notes[i + 1]["t"] - (notes[i]["t"] + notes[i]["d"])
-        if 0 < gap <= B(0.25):
-            notes[i]["d"] = notes[i + 1]["t"] - notes[i]["t"]
 
-    for i, nt in enumerate(notes):
-        t0, t1 = nt["t"], nt["t"] + nt["d"]
-        prv = notes[i - 1] if i > 0 else None
-        nxt = notes[i + 1] if i < n - 1 else None
-
-        legato_prev = bool(prv and prv["t"] + prv["d"] >= t0 - 2)
-        interval = 0
-        legato_next = False
-        if nxt and nxt["t"] <= t1 + 2:
-            interval = nxt["p"] - nt["p"]
-            legato_next = abs(interval) <= 12 and interval != 0
-
-        tr.note(t0, nt["d"], nt["p"], nt["v"])
-        if not expressive:
-            continue
-
-        dur = float(nt["d"])
-        scoop_len = min(B(0.5), 0.40 * dur)
-        glide_len = min(B(0.6), 0.45 * dur)
-        fall_len = min(B(5.0), 0.62 * dur)
-        vib_max = 0.20 + 0.20 * min(1.0, dur / B(3))
-        phase = (i * 1.7) % (2 * math.pi)
-        sec0 = t2s(t0)
-
-        # ---- pitch: scoop in, vibrato through, glide out -----------------
-        last = None
-        tick = t0
-        while tick <= t1:
-            semis = 0.0
-            if not legato_prev and scoop_len > 0 and tick - t0 < scoop_len:
-                u = (tick - t0) / scoop_len
-                semis -= 1.6 * (1.0 - u) ** 2
-            secs = t2s(tick) - sec0
-            depth = vib_max * max(0.0, min(1.0, (secs - 0.35) / 1.10))
-            semis += depth * math.sin(2 * math.pi * VIB_RATE * secs + phase)
-            if legato_next and tick > t1 - glide_len:
-                u = (tick - (t1 - glide_len)) / glide_len
-                semis += interval * (u ** 2.2)
-            if nt["fall"] and tick > t1 - fall_len:
-                u = (tick - (t1 - fall_len)) / fall_len
-                semis -= 11.5 * (u ** 1.6)
-            semis = max(-BEND_RANGE + 0.1, min(BEND_RANGE - 0.1, semis))
-            v = tr.bend(tick, semis, BEND_RANGE)
-            if v == last:
-                tr.pop_last()                   # drop redundant frames
-            else:
-                last = v
-            tick += BEND_STEP
-        tr.bend(t1, 0.0, BEND_RANGE)            # ordered after the note-off
-
-        # ---- the volume hand: CC11 swells --------------------------------
-        peak = min(127, 38 + nt["v"] * 0.72)
-        start = 0.75 * peak if legato_prev else 10.0
-        atk = max(1.0, min(B(0.9), 0.35 * dur))
-        rel = max(1.0, min(B(1.6), 0.50 * dur))
-        tick = t0
-        while tick <= t1:
-            if tick - t0 < atk:
-                val = start + (peak - start) * ((tick - t0) / atk) ** 0.75
-            else:
-                val = peak
-            val += 4.0 * math.sin(2 * math.pi * 0.55 * (t2s(tick) - sec0))
-            if not legato_next and tick > t1 - rel:
-                u = (tick - (t1 - rel)) / rel
-                val = peak * (0.14 + 0.86 * (1.0 - u) ** 1.6)
-            if nt["fall"] and tick > t1 - fall_len:
-                u = (tick - (t1 - fall_len)) / fall_len
-                val *= max(0.0, 1.0 - u ** 1.2)
-            tr.cc(tick, 11, val)
-            tick += EXPR_STEP
-        tr.cc(t1, 11, 0 if nt["fall"] else 24)
-
-        # ---- mod wheel tracks the vibrato, for synths that map it --------
-        if dur >= B(1.5):
-            tick = t0
-            while tick <= t1:
-                secs = t2s(tick) - sec0
-                tr.cc(tick, 1, 90 * max(0.0, min(1.0, (secs - 0.35) / 1.10)))
-                tick += 96
-            tr.cc(t1, 1, 0)
+def render_theremin(tr, notes, t2s, expressive_=True):
+    """The theremin's glides, hand vibrato and volume-hand swells."""
+    expressive.render(tr, notes, t2s, THEREMIN_VOICE, expressive_)
 
 
 # --------------------------------------------------------------------------
@@ -566,7 +482,7 @@ def build(expressive=True, seed=20260910):
         theremin.bend_range(int(BEND_RANGE))
         box.bend_range(int(BEND_RANGE))
 
-    render_theremin(theremin, THEREMIN, t2s, expressive=expressive)
+    render_theremin(theremin, THEREMIN, t2s, expressive)
     build_armonica(armonica, rnd)
     build_pad(pad, rnd)
     build_choir(choir, rnd)

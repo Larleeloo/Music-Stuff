@@ -59,6 +59,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from smf import (BAR, BEAT, B, P_SETUP, T, Track,  # noqa: E402
                  make_tick_to_sec, tempo_meta, write_smf)
+from glitch import pitch_glitch, ratchet, stutter  # noqa: E402
 
 SIXTEENTH = BEAT // 4
 THIRTYSECOND = BEAT // 8
@@ -135,30 +136,6 @@ def ch(bar):
 # glitch vocabulary
 # --------------------------------------------------------------------------
 
-def stutter(tr, tick, pitch, vel, count, step, decay=0.87, accel=1.0,
-            gate=0.88):
-    """Retrigger one pitch.  accel < 1 speeds the repeats up (a ratcheting
-    stutter); decay fades them.  Returns the tick after the last repeat."""
-    t, s, v = float(tick), float(step), float(vel)
-    for _ in range(count):
-        # the note must always end inside its own step, however far accel has
-        # shrunk it, or the repeats collide and truncate each other
-        tr.note(t, min(s * gate, max(2.0, s - 2.0)), pitch, v)
-        t += s
-        s *= accel
-        v *= decay
-    return t
-
-
-def ratchet(tr, tick, span, pitch, vel, divs, rising=True):
-    """Subdivide `span` into `divs` hits with a velocity ramp."""
-    step = span / float(divs)
-    for i in range(divs):
-        u = i / max(1.0, divs - 1.0)
-        v = vel * (0.5 + 0.5 * u) if rising else vel * (1.0 - 0.5 * u)
-        tr.note(tick + i * step, step * 0.85, pitch, v)
-
-
 def steps(pattern):
     """'1..1' -> [0, 3].  Patterns are one bar of sixteenths."""
     assert len(pattern) == 16, "pattern must be 16 sixteenths: %r" % pattern
@@ -180,14 +157,6 @@ def tape_stop(tr, start, end, depth=-11.5, curve=2.4, steps_=56):
         u = k / float(steps_)
         tr.bend(start + u * (end - start), depth * (u ** curve))
     tr.bend(end + 4, 0.0)
-
-
-def pitch_glitch(tr, start, end, count, rnd, spread=5.0):
-    """Stair-stepped bend jumps - a sampler losing its place."""
-    choices = [-spread, -spread * 0.5, 0.0, spread * 0.5, spread, spread * 1.4]
-    for k in range(count):
-        tr.bend(start + (end - start) * k / float(count), rnd.choice(choices))
-    tr.bend(end, 0.0)
 
 
 def sidechain(tr, kick_ticks, start, end, depth=0.70, tau=210.0, step=24):

@@ -185,7 +185,11 @@ def render(tr, notes, t2s, voice=None, expressive=True):
             val += v.breath_depth * math.sin(
                 2 * math.pi * v.breath_rate * (t2s(tick) - sec0))
             if not legato_next and tick > t1 - rel:
-                u = (tick - (t1 - rel)) / rel
+                # clamped because t1 - rel is a float: on the last frame of a
+                # note whose length is an exact multiple of expr_step, u comes
+                # out a hair over 1.0, and a negative base under a fractional
+                # exponent returns a complex number rather than raising
+                u = min(1.0, (tick - (t1 - rel)) / rel)
                 val = peak * (v.rel_floor
                               + (1.0 - v.rel_floor) * (1.0 - u) ** v.rel_exp)
             if nt["fall"] and tick > t1 - fall_len:

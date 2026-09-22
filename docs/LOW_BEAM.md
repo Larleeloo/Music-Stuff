@@ -37,6 +37,106 @@ out, and it is the whole hinge of the arrangement.
 **Three channels are guides, not parts.** Channels 6, 7 and 11 exist to show
 you the tune and the timing. Mute them the moment your own take is down.
 
+## Recording into it
+
+A `.mid` file cannot hold audio — there is no room in the format for it. So
+the MIDI gets imported **once**, and from then on your FL project is the
+song. Your takes live in that project as audio clips, next to the instruments
+the MIDI is driving. The `.mid` never changes.
+
+Two numbers that look related and are not: **MIDI channel 6** is the Lead
+Vocal guide. **Mixer insert 6** is wherever you happen to record. They are
+different systems that both start counting at one. Rename your mixer inserts
+(double-click the name) the moment you create them and the confusion goes
+away for good.
+
+"Replacing" a guide means one action: **mute the guide channel in the Channel
+Rack.** You do not put audio into it. The guide is a MIDI channel driving a
+synth and your take is an audio clip; FL keeps those as separate objects, and
+seeing them separated in the Channel Rack is correct, not a symptom.
+
+### If a plugin seems to do nothing
+
+Don't judge by ear — the test is ambiguous and you will waste an evening.
+**Pull the insert's volume fader to zero and press play.**
+
+- The recording goes silent → routing is right, the problem is the plugin
+  (check the small LED beside the slot, and that you are in Song mode).
+- The recording still plays → your audio is not passing through that insert
+  at all, and no plugin there will ever touch it.
+
+To find where it actually is, play back and watch **which insert's meter
+moves**. That is the ground truth, and it sidesteps every version-specific
+routing menu.
+
+## The chains, as numbers
+
+Every value below is a starting point that works, not a law. Set them in
+order, top to bottom, on the insert your take plays through.
+
+Plugin names and availability shift between FL editions and versions. Where
+you cannot find one, the *intent* column tells you what to substitute.
+
+### Lead vocal — the Nightcall chain
+
+| # | Plugin | Setting | Intent |
+|---|---|---|---|
+| 1 | Fruity Parametric EQ 2 | Band 1 → **Low cut**, **120 Hz** | Keep bass out of the distortion. Non-negotiable — see below |
+| 2 | Fruity Blood Overdrive | Preband ~9 o'clock · **Gain ~70%** · Tone centre · Postband centre · Volume down to compensate | The grit |
+| 3 | Fruity Squeeze | **Sample rate** reduction first, until it sounds cheap; bit depth only a little | Digital artefacts |
+| 4 | Fruity Parametric EQ 2 | Band 1 → **High cut**, **6 kHz** | Kill the fizz the distortion just made |
+| 5 | Fruity Limiter (**COMP** tab) | Ratio **4:1** · Attack **20 ms** · Release **80 ms** · Threshold for **4–6 dB** of gain reduction | Level it, *after* the dirt |
+| 6 | Fruity Chorus | Depth ~30%, rate slow | 1980s width |
+| 7 | Fruity Delay 3 | Sync **3/16** (dotted 1/8 = **523 ms** at 86 BPM) · feedback ~25% | The throw the phrasing leaves room for |
+| 8 | Fruity Reeverb 2 | Short bright plate, ~1.2 s, low mix | Air, not a hall |
+
+**Slot 1 before slot 2 is the entire trick.** High-passing after the
+distortion instead of before is the difference between a machine voice and a
+blown speaker, because low frequencies entering a distortion stage
+intermodulate with everything above them.
+
+If it ends up too unintelligible, move slots 2–4 onto a separate insert, send
+this one to it, and blend — the words survive on the clean path.
+
+### Lead vocal — the pitch drop
+
+The distortion alone will not do it; the octave drop is at least half the
+sound. Right-click the audio clip → **Edison**, then `Tools → Time/pitch
+stretch`, pitch **−12 semitones**, formants **not** preserved. Pitcher and
+NewTone are easier but live in the higher FL bundles; Edison is the route
+that always exists.
+
+You sing the verse and chorus guides **an octave above** written pitch so
+that this drop lands them back in key.
+
+### Acoustic guitar — the refrain
+
+Much shorter, because the point of the section is that almost nothing is done
+to it.
+
+| # | Plugin | Setting | Intent |
+|---|---|---|---|
+| 1 | Fruity Parametric EQ 2 | Band 1 → **Low cut**, **90 Hz** | Stay out of the upright bass |
+| 2 | Fruity Parametric EQ 2 | Optional dip, **−3 dB around 250 Hz** | Only if it sounds boxy |
+| 3 | Fruity Limiter (**COMP** tab) | Ratio **2.5:1** · Attack **30 ms** · Release **150 ms** · **2–3 dB** of reduction | Even out the picking |
+
+**No reverb. No delay. Nothing else.** If it sounds naked, turn the tape
+noise on channel 15 up — that bed is what puts the guitar in a room, and it
+is the reason the arrangement has one.
+
+## Do this once, not every time
+
+You do not have to rebuild any of the above ever again:
+
+- **Save a chain:** right-click the mixer insert → *Save mixer track state
+  as…* → it writes an `.fst`. Load it onto any insert, in any project, and
+  the whole chain comes back with its settings.
+- **Save the whole song setup:** once the instruments, routing and chains are
+  how you want them, `File → Save as template`. Every new session then opens
+  with all of it already in place.
+- **Save versions as you go:** `low_beam_01.flp`, `_02`, and so on. FL has no
+  undo history across sessions, and one bad experiment can cost an evening.
+
 ## Channel map
 
 GM program numbers below are the 1-indexed ones FL displays.

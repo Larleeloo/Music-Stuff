@@ -38,25 +38,42 @@ note for 64 of 76 bars — when it finally moves, the floor drops out.
 
 `midi/ashfall.mid` · [setup guide](docs/ASHFALL.md)
 
+### Low Beam — synthwave · F# minor · ~5:13
+
+A night drive: saw bass in eighths, a gated snare, a new age pad and a lead
+that glides. Unlike the others this one is a bed rather than a finished
+piece — it has two holes cut in it. The vocal is written as a guide plus a
+vocoder carrier, to be sung and then pitched down and distorted the way the
+"Nightcall" vocal is. Then a tape stop kills the entire synth world at bar
+89, and after three empty bars the track comes back as an acoustic refrain
+with room for a dry, close-miked guitar. Capo 2 and that refrain is
+Em – C – G – D.
+
+`midi/low_beam.mid` · [setup guide](docs/LOW_BEAM.md)
+
 ## Using them
 
-Import the `.mid` into your DAW with **tempo import enabled** — all three use
-tempo as a compositional device, not just a speed setting — and with
+Import the `.mid` into your DAW with **tempo import enabled** — the first three
+use tempo as a compositional device, not just a speed setting — and with
 **controller/automation import enabled**, which is what carries the pitch bend
 and the volume shaping. Each piece also ships a `*_clean.mid` with identical
 notes but no controller data, for hand-editing.
 
-**Read the setup guide before importing.** All three need their lead
+**Read the setup guide before importing.** All four need their lead
 instrument's **pitch bend range set to 12 semitones**; the files request it via
 RPN 0, but plenty of plugins ignore that and stay at ±2, which quietly flattens
 every glide, tape stop and detune in the piece.
+
+Low Beam is the exception to most of the above: its tempo is deliberately
+fixed, because it is built to be recorded into rather than listened to as it
+stands. Its guide channels are meant to be muted once your own takes are down.
 
 ## Shared modules
 
 | Module | What it is |
 |---|---|
 | `src/smf.py` | The MIDI writer. Format 1, 480 PPQ, no running status, with event priorities so a note-off always lands before the bend reset before the next note-on. |
-| `src/expressive.py` | Portamento, vibrato and CC11 swells for keyless instruments. One engine, retuned by its `Voice` fields — it drives Hollow Hour's theremin, Ashfall's CS-80 and Ashfall's ondes. |
+| `src/expressive.py` | Portamento, vibrato and CC11 swells for keyless instruments. One engine, retuned by its `Voice` fields — it drives Hollow Hour's theremin, Ashfall's CS-80 and ondes, Low Beam's synth lead, and Low Beam's guide vocals, on the grounds that a voice is a keyless instrument too. |
 | `src/glitch.py` | Stutters, ratchets and stair-stepped pitch glitches. |
 
 ## Regenerating
@@ -65,6 +82,7 @@ every glide, tape stop and detune in the piece.
 python3 src/generate_hollow_hour.py            # add --clean for the notes-only file
 python3 src/generate_static_bloom.py
 python3 src/generate_ashfall.py
+python3 src/generate_low_beam.py
 ```
 
 Output is deterministic — humanisation is seeded, so regenerating produces

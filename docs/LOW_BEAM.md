@@ -55,6 +55,42 @@ Rack.** You do not put audio into it. The guide is a MIDI channel driving a
 synth and your take is an audio clip; FL keeps those as separate objects, and
 seeing them separated in the Channel Rack is correct, not a symptom.
 
+### If the take lands late
+
+Two different problems wear this costume, and fixing one does nothing for the
+other.
+
+**You hear yourself late while playing.** The round trip through the
+interface and back takes time, and past about 10 ms you will drag behind the
+beat without noticing. Lower `Options → Audio Settings → Buffer length` to
+**128 or 256 samples** while tracking — at 44.1 kHz that is 2.9 and 5.8 ms
+against 46 ms for a 2048 buffer — and raise it again for mixing, when no
+human is playing. Better still, if your interface has a **direct monitor**
+control, use it: you then hear yourself from the hardware and FL's buffer
+stops mattering for performance.
+
+**The clip lands in the wrong place.** Separate problem, unfixed by the
+above: FL may write the file a fixed distance late because the input path has
+a delay of its own. The tell is that the offset is *identical every time* —
+bad timing varies, latency does not.
+
+Measure it with the click on channel 16, which is a sharp transient at a
+known position and therefore a ruler:
+
+1. Point a mic at your speakers, or loop an output back to an input.
+2. Record a few bars over one of the count-ins — bar 16, 32, 56, 72 or 92.
+3. Zoom all the way in and find the first recorded click transient.
+4. The gap between it and the MIDI click is your latency.
+
+Put that number into FL's recording latency offset so every future take is
+compensated, or set Playlist snap to **None** and drag the clip back by it.
+Measure once; it only changes if you change buffer size, sample rate or
+interface.
+
+**Nudge the audio, never the MIDI.** The fixed 86 BPM is what makes this file
+a reliable reference, and the delay times above stop being correct the moment
+the grid moves.
+
 ### If a plugin seems to do nothing
 
 Don't judge by ear — the test is ambiguous and you will waste an evening.
